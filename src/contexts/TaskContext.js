@@ -70,7 +70,7 @@ export const TaskProvider = ({ children }) => {
       
       // 4. 서버 데이터와 로컬 데이터를 비교하여 동기화
       // 4-1. 로컬에만 있는 데이터를 서버로 추가
-      syncUnsyncedTasks(localTasks);
+      await syncUnsyncedTasks(localTasks);
       // 4-2. 서버에만 있는 데이터를 로컬에서 삭제
       // 4-3. 서버와 로컬에 모두 있는 데이터의 상태 업데이트
     }
@@ -203,7 +203,46 @@ export const TaskProvider = ({ children }) => {
     }
   };
 
+  const deleteServerOnlyData = async (formattedServerLists, localTasks) => {
+    try {
+      // 서버 데이터에서 로컬에 없는 리스트를 찾음
+      const serverOnlyLists = formattedServerLists.filter(
+        (serverList) => !localTasks.some((localTask) => localTask.id === serverList.id)
+      );
   
+      // 서버에서만 있는 리스트 삭제
+      await Promise.all(
+        serverOnlyLists.map(async (serverList) => {
+          // 1. 해당 리스트의 서브 작업들을 먼저 삭제
+          const deleteSubTaskResponse = await axios.delete(
+            `http://localhost:1009/tasks/${serverList.id}`, 
+            {
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+              },
+            }
+          );
+          console.log(`삭제된 서브 작업 (listId: ${serverList.id}):`, deleteSubTaskResponse.data);
+  
+          // 2. 리스트 자체를 삭제
+          const deleteListResponse = await axios.delete(
+            `http://localhost:1009/lists/${serverList.id}`,
+            {
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+              },
+            }
+          );
+          console.log(`삭제된 리스트 (listId: ${serverList.id}):`, deleteListResponse.data);
+        })
+      );
+  
+      console.log("서버에만 있는 데이터를 모두 삭제했습니다.");
+    } catch (error) {
+      console.error("서버 데이터 삭제 중 오류 발생:", error);
+    }
+  };
+
   const addTask = (newTask) => {
     const taskWithChecked = { ...newTask, isChecked: true };
     setTasks((prevTasks) => [...prevTasks, taskWithChecked]);
