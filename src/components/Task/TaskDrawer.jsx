@@ -1,54 +1,68 @@
+import React, { useEffect, useState, useContext } from 'react';
+import { TaskContext } from '../../contexts/TaskContext';
 import { BsPlusCircleDotted } from "react-icons/bs";
 import { MdOutlineModeEdit } from "react-icons/md";
 import { RiDeleteBin5Line } from "react-icons/ri";
-import { useState, useContext } from "react";
-import { TaskContext } from '../../contexts/TaskContext'; // TaskContext 가져오기
-import { DragDropContext, Droppable, Draggable } from "react-beautiful-dnd"; // react-beautiful-dnd 라이브러리 가져오기
-
 import Modal from "../Common/Modal";
 import Button from "../Common/Button";
 import InputCheck from "../Common/InputCheck";
 import InputField from "../Common/InputField";
+import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 
 function TaskDrawer() {
-  const { tasks, addTask, updateTaskTitle, updateTaskCheck, deleteTask, updateTaskOrder } = useContext(TaskContext); // TaskContext 사용
+  const { lists, fetchLists, addList, updateList, deleteList, reorderLists } = useContext(TaskContext); // 수정된 부분: addList로 변경
   const [open, setOpen] = useState(false);
-  const [inputValue, setInputValue] = useState(''); // 입력 값 상태
-  const [isEditing, setIsEditing] = useState(false); // 편집 모드
-  const [currentTaskId, setCurrentTaskId] = useState(null); // 현재 편집 중인 Task ID 저장
+  const [inputValue, setInputValue] = useState('');
+  const [isEditing, setIsEditing] = useState(false);
+  const [currentListId, setCurrentListId] = useState(null);
 
-  // Task 추가 처리 함수
-  const handleAddTask = () => {
-    if (inputValue.trim() === '') return; // 빈 입력 방지
+  // 데이터 로드
+  useEffect(() => {
+    if (lists.length === 0) {
+      fetchLists();  // 리스트가 없을 때만 호출
+    }
+  }, [fetchLists, lists.length]); // fetchLists 의존성 추가
 
-    const newTask = { id: Date.now(), text: inputValue, isChecked: false, subTasks: [] }; // 새로운 Task 객체
-    addTask(newTask); // Task 추가
-    setInputValue(''); // 입력 필드 초기화
-    setOpen(false); // 모달 닫기
+  // 공통된 입력 필드 초기화 함수
+  const resetModal = () => {
+    setInputValue('');
+    setIsEditing(false);
+    setOpen(false);
   };
 
-  // Task 제목 수정 처리 함수
-  const handleUpdateTaskTitle = () => {
-    if (inputValue.trim() === '') return; // 빈 입력 방지
-
-    updateTaskTitle(currentTaskId, inputValue); // Task 제목 업데이트
-    setInputValue(''); // 입력 필드 초기화
-    setIsEditing(false); // 편집 모드 해제
-    setOpen(false); // 모달 닫기
+  // 새 목록 추가
+  const handleAddList = () => {
+    if (inputValue.trim() === '') return;  // 입력값이 공백이면 추가하지 않음
+    addList({ title: inputValue });
+    resetModal();
   };
 
-  // Drag and Drop이 끝났을 때 호출되는 함수
+  // 목록 수정
+  const handleRenameList = () => {
+    if (inputValue.trim() === '') return;  // 입력값이 공백이면 수정하지 않음
+    const listToUpdate = lists.find(list => list.id === currentListId);
+    if (!listToUpdate) return console.error('List not found');
+    updateList(currentListId, inputValue, listToUpdate.isVisible);  // 제목과 isVisible 값 업데이트
+    resetModal();
+  };
+
+  // 목록 삭제
+  const handleDeleteList = (id) => deleteList(id);
+
+  // 드래그앤드랍 순서 변경 핸들러
   const handleDragEnd = (result) => {
     const { source, destination } = result;
-    
-    // 드래그를 시작했지만, 목적지에 두지 않은 경우 리턴
-    if (!destination) return;
+    if (!destination || source.index === destination.index) return;
 
-    const reorderedTasks = Array.from(tasks);
-    const [movedTask] = reorderedTasks.splice(source.index, 1); // 드래그된 요소 삭제
-    reorderedTasks.splice(destination.index, 0, movedTask); // 목적지에 요소 추가
+    reorderLists(source.index, destination.index); // 순서 변경 함수 호출
+  };
 
-    updateTaskOrder(reorderedTasks); // Task 순서 업데이트
+  // 모달 열기
+  const openListModal = (list = {}) => {
+    setCurrentListId(list.id || null);
+    setInputValue(list.title || '');
+    setIsEditing(!!list.id);  // 리스트가 있으면 수정 모드, 없으면 추가 모드
+    setOpen(true);
   };
 
   return (
@@ -56,84 +70,71 @@ function TaskDrawer() {
       <div>
         <button
           className="w-full h-8 mt-2 p-2 flex items-center hover:text-blue-600 hover:rounded-lg hover:bg-gray-200"
-          onClick={() => setOpen(true)} // 모달 열기
+          onClick={() => openListModal()} // 새 목록 만들기 모달 열기
         >
           <BsPlusCircleDotted />
           <p className="ml-2">새 목록 만들기</p>
         </button>
 
-        {/* Drag and Drop Context */}
-        <DragDropContext onDragEnd={handleDragEnd}>
-          <Droppable droppableId="task-list">
-            {(provided) => (
-              <div
-                className="lists w-64"
-                {...provided.droppableProps}
-                ref={provided.innerRef}
-              >
-                {tasks.map((task, index) => (
-                  <Draggable key={task.id} draggableId={task.id.toString()} index={index}>
-                    {(provided) => (
-                      <div
-                        ref={provided.innerRef}
-                        {...provided.draggableProps}
-                        {...provided.dragHandleProps}
-                        className="h-8 mt-3 flex items-center hover:rounded-lg hover:bg-gray-200"
-                      >
-                        <InputCheck
-                          checked={task.isChecked} // 체크 상태 유지
-                          onChange={() => updateTaskCheck(task.id, !task.isChecked)} // 체크 상태 변경
-                        />
-                        <p className="w-10/12">
-                          {task.text.length > 10 ? task.text.slice(0, 10) + '...' : task.text} {/* 제목 표시 */}
-                        </p>
-                        <Button
-                          onClick={() => {
-                            setCurrentTaskId(task.id); // 현재 Task ID 설정
-                            setInputValue(task.text); // 입력 필드 값 설정
-                            setIsEditing(true); // 편집 모드 활성화
-                            setOpen(true); // 모달 열기
-                          }}
+        {lists && lists.length > 0 ? (
+          <DragDropContext onDragEnd={handleDragEnd}>
+            <Droppable droppableId="lists">
+              {(provided) => (
+                <div
+                  className="lists w-64"
+                  {...provided.droppableProps}
+                  ref={provided.innerRef}
+                >
+                  {lists.map((list, index) => (
+                    <Draggable key={list.id} draggableId={list.id.toString()} index={index}>
+                      {(provided, snapshot) => (
+                        <div
+                          ref={provided.innerRef}
+                          {...provided.draggableProps}
+                          {...provided.dragHandleProps}
+                          className={`h-8 mt-3 flex items-center hover:rounded-lg hover:bg-gray-200 ${snapshot.isDragging ? 'bg-gray-300' : ''}`}
                         >
-                          <MdOutlineModeEdit />
-                        </Button>
-                        <Button onClick={() => deleteTask(task.id)}> {/* Task 삭제 */}
-                          <RiDeleteBin5Line />
-                        </Button>
-                      </div>
-                    )}
-                  </Draggable>
-                ))}
-                {provided.placeholder} {/* Droppable 영역을 유지하기 위해 필요한 placeholder */}
-              </div>
-            )}
-          </Droppable>
-        </DragDropContext>
+                          <InputCheck
+                            checked={list.isVisible}
+                            onChange={() => updateList(list.id, list.title, !list.isVisible)} // 상태 변경 핸들러 추가
+                          />
+                          <p className="w-10/12">
+                            {list.title.length > 10 ? `${list.title.slice(0, 10)}...` : list.title}
+                          </p>
+                          <Button onClick={() => openListModal(list)}><MdOutlineModeEdit /></Button>
+                          <Button onClick={() => handleDeleteList(list.id)}><RiDeleteBin5Line /></Button>
+                        </div>
+                      )}
+                    </Draggable>
+                  ))}
+                  {provided.placeholder}
+                </div>
+              )}
+            </Droppable>
+          </DragDropContext>
+        ) : (
+          <p>리스트가 없습니다.</p>
+        )}
       </div>
 
-      {/* Task 추가/수정 모달 */}
-      <Modal isOpen={open} onClose={() => setOpen(false)} closeBtn={true}>
+      {/* 목록 추가/수정 모달 */}
+      <Modal isOpen={open} onClose={resetModal} closeBtn={true}>
         <div>
           <p className="font-semibold text-lg text-center mb-4">
             {isEditing ? '목록 수정하기' : '새 목록 만들기'}
           </p>
           <InputField
             placeholder="목록 이름 입력"
-            value={inputValue} // 입력 필드 값
-            onChange={(e) => setInputValue(e.target.value)} // 입력 필드 변경 처리
+            value={inputValue || ''}  // 기본값을 빈 문자열로 설정하여 경고 해결
+            onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
-                isEditing ? handleUpdateTaskTitle() : handleAddTask(); // 엔터 키로 Task 추가/수정
+                isEditing ? handleRenameList() : handleAddList();
               }
             }}
           />
           <div className="flex justify-around text-center">
-            <Button
-              color="green"
-              onClick={() => {
-                isEditing ? handleUpdateTaskTitle() : handleAddTask(); // Task 추가 또는 수정
-              }}
-            >
+            <Button color="green" onClick={() => (isEditing ? handleRenameList() : handleAddList())}>
               완료
             </Button>
           </div>

@@ -1,75 +1,82 @@
+import { TaskContext } from "../../contexts/TaskContext";
+import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import { BsPlusCircleDotted } from "react-icons/bs";
 import { MdOutlineModeEdit } from "react-icons/md";
 import { RiDeleteBin5Line } from "react-icons/ri";
-import { useState, useContext } from "react";
-import { TaskContext } from "../../contexts/TaskContext";
-import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
+import { useState, useContext, useEffect } from "react";
 import Button from "../Common/Button";
 import InputCheck from "../Common/InputCheck";
 import InputField from "../Common/InputField";
 import Modal from '../Common/Modal';
 
-function TaskCard({ task, dragHandleProps }) {
-  const { updateSubTaskCheck, updateSubTaskTitle, deleteSubTask, addSubTask, updateSubTaskOrder } = useContext(TaskContext);
+function TaskCard({ list, dragHandleProps }) {
+  const { tasks, fetchTasks, addTask, updateTask, deleteTask, reorderTasks } = useContext(TaskContext);
+
   const [open, setOpen] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [isEditing, setIsEditing] = useState(false);
-  const [currentSubTaskId, setCurrentSubTaskId] = useState(null);
+  const [currentTaskId, setCurrentTaskId] = useState(null);
   const [isCompletedVisible, setIsCompletedVisible] = useState(true);
   const [selectedDaysMap, setSelectedDaysMap] = useState({});
 
   const days = ["월", "화", "수", "목", "금", "토", "일"];
 
-  const handleAddSubTask = () => {
+  useEffect(() => {
+    if (!tasks || tasks.length === 0) {
+      fetchTasks(list.id);
+    }
+  }, [tasks]);
+
+  const handleaddTasks = () => {
     if (inputValue.trim() === '') return;
 
-    const newSubTask = { id: Date.now(), text: inputValue, isChecked: false };
-    addSubTask(task.id, newSubTask);
+    const newTask = { id: Date.now(), text: inputValue, isChecked: false };
+    addTask(list.id, newTask);
     setInputValue('');
     setOpen(false);
   };
 
-  const handleUpdateSubTaskTitle = () => {
+  const handleupdateTasks = () => {
     if (inputValue.trim() === '') return;
 
-    updateSubTaskTitle(task.id, currentSubTaskId, inputValue);
+    updateTask(list.id, currentTaskId, inputValue);
     setInputValue('');
     setIsEditing(false);
     setOpen(false);
   };
 
-  const handleSubTaskDragEnd = (result) => {
+  const handleTaskDragEnd = (result) => {
     if (!result.destination) return;
 
-    const reorderedSubTasks = Array.from(task.subTasks);
+    const reorderedSubTasks = Array.from(list.subTasks);
     const [movedSubTask] = reorderedSubTasks.splice(result.source.index, 1);
     reorderedSubTasks.splice(result.destination.index, 0, movedSubTask);
 
-    updateSubTaskOrder(task.id, reorderedSubTasks);
+    reorderTasks(list.id, reorderedSubTasks);
   };
 
   const toggleDay = (subTaskId, day) => {
     setSelectedDaysMap((prev) => {
       const currentDays = prev[subTaskId] || [];
-      if (currentDays.includes(day)) {
-        return { ...prev, [subTaskId]: currentDays.filter(d => d !== day) };
-      } else {
-        return { ...prev, [subTaskId]: [...currentDays, day] };
-      }
+      return {
+        ...prev,
+        [subTaskId]: currentDays.includes(day)
+          ? currentDays.filter(d => d !== day)
+          : [...currentDays, day],
+      };
     });
   };
 
-
   // 완료된 서브 태스크와 미완료 서브 태스크 분리
-  const completedSubTasks = task.subTasks.filter(subTask => subTask.isChecked);
-  const incompleteSubTasks = task.subTasks.filter(subTask => !subTask.isChecked);
+  const completedSubTasks = list.tasks?.filter(task => task.isChecked) || [];
+  const incompleteSubTasks = list.tasks?.filter(task => !task.isChecked) || [];
 
   return (
     <>
       <div className="w-96 h-96 m-4 p-2 bg-white shadow-md rounded-lg hover:shadow-gray-400 overflow-y-auto">
-        {/* Only this part (header) will be draggable for task order */}
+        {/* Only this part (header) will be draggable for list order */}
         <div {...dragHandleProps} className="flex justify-between items-center cursor-pointer p-2 rounded-t-lg">
-          <h3 className="text-lg font-semibold">{task.text}</h3>
+          <h3 className="text-lg font-semibold">{list.title}</h3>
         </div>
 
         <Button className="w-40 h-8 mt-2 ml-2 text-blue-600 rounded-full flex items-center" onClick={() => setOpen(true)}>
@@ -77,12 +84,12 @@ function TaskCard({ task, dragHandleProps }) {
           <p className="ml-2">할 일 추가</p>
         </Button>
 
-        <DragDropContext onDragEnd={handleSubTaskDragEnd}>
-          <Droppable droppableId={`subtask-${task.id}`}>
+        <DragDropContext onDragEnd={handleTaskDragEnd}>
+          <Droppable droppableId={`subtask-${list.id}`}>
             {(provided) => (
               <div ref={provided.innerRef} {...provided.droppableProps}>
-                {incompleteSubTasks.map((subTask, index) => (
-                  <Draggable key={subTask.id} draggableId={subTask.id.toString()} index={index}>
+                {incompleteSubTasks.map((task, index) => (
+                  <Draggable key={task.id} draggableId={task.id.toString()} index={index}>
                     {(provided, snapshot) => (
                       <div
                         ref={provided.innerRef}
@@ -97,16 +104,16 @@ function TaskCard({ task, dragHandleProps }) {
                         <div className="flex items-center">
                           <InputCheck
                             shape="round"
-                            checked={subTask.isChecked}
-                            onChange={() => updateSubTaskCheck(task.id, subTask.id, !subTask.isChecked)}
+                            checked={task.isChecked}
+                            onChange={() => updateTask(list.id, task.id, !task.isChecked)}
                           />
-                          <p className="w-10/12">{subTask.text}</p>
+                          <p className="w-10/12">{task.text}</p>
 
                           <Button
                             className="ml-2 mr-2"
                             onClick={() => {
-                              setCurrentSubTaskId(subTask.id);
-                              setInputValue(subTask.text);
+                              setCurrentTaskId(task.id);
+                              setInputValue(task.text);
                               setIsEditing(true);
                               setOpen(true);
                             }}
@@ -114,23 +121,22 @@ function TaskCard({ task, dragHandleProps }) {
                             <MdOutlineModeEdit />
                           </Button>
 
-                          <Button onClick={() => deleteSubTask(task.id, subTask.id)}><RiDeleteBin5Line /></Button>
+                          <Button onClick={() => deleteTask(list.id, task.id)}><RiDeleteBin5Line /></Button>
                         </div>
-                        
+
                         {/* 요일 선택 추가 */}
                         <div className="flex mt-2 justify-center">
                           {days.map((day) => (
                             <button
                               key={day}
-                              className={`mr-1 p-2 rounded-full ${selectedDaysMap[subTask.id]?.includes(day) ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}
-                              onClick={() => toggleDay(subTask.id, day)}
+                              className={`mr-1 p-2 rounded-full ${selectedDaysMap[task.id]?.includes(day) ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}
+                              onClick={() => toggleDay(task.id, day)}
                             >
                               {day}
                             </button>
                           ))}
                         </div>
                       </div>
-
                     )}
                   </Draggable>
                 ))}
@@ -148,16 +154,16 @@ function TaskCard({ task, dragHandleProps }) {
             </Button>
             {isCompletedVisible && (
               <div>
-                {completedSubTasks.map((subTask, index) => (
-                  <div key={subTask.id} className="flex mt-3 hover:rounded-lg hover:bg-gray-100">
+                {completedSubTasks.map((task) => (
+                  <div key={task.id} className="flex mt-3 hover:rounded-lg hover:bg-gray-100">
                     <InputCheck
                       shape="round"
-                      checked={subTask.isChecked}
-                      onChange={() => updateSubTaskCheck(task.id, subTask.id, !subTask.isChecked)}
+                      checked={task.isChecked}
+                      onChange={() => updateTask(list.id, task.id, !task.isChecked)}
                     />
-                    <p className="w-10/12 line-through text-gray-500">{subTask.text}</p>
+                    <p className="w-10/12 line-through text-gray-500">{task.text}</p>
 
-                    <Button onClick={() => deleteSubTask(task.id, subTask.id)}><RiDeleteBin5Line /></Button>
+                    <Button onClick={() => deleteTask(list.id, task.id)}><RiDeleteBin5Line /></Button>
                   </div>
                 ))}
               </div>
@@ -175,11 +181,11 @@ function TaskCard({ task, dragHandleProps }) {
 
           <InputField
             placeholder="서브 태스크 입력"
-            value={inputValue}
+            value={inputValue || ''}  // 기본값을 빈 문자열로 설정하여 경고 해결
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
-                isEditing ? handleUpdateSubTaskTitle() : handleAddSubTask();
+                isEditing ? handleupdateTasks() : handleaddTasks();
               }
             }}
           />
@@ -188,8 +194,7 @@ function TaskCard({ task, dragHandleProps }) {
             <Button
               color="green"
               onClick={() => {
-                isEditing ? handleUpdateSubTaskTitle() : handleAddSubTask();
-                setOpen(false);
+                isEditing ? handleupdateTasks() : handleaddTasks();
               }}
             >
               완료
